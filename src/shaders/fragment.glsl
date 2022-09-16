@@ -2,6 +2,7 @@ uniform float uInnerLimit;
 varying vec3 vColor;
 
 varying float distanceToCenter;
+varying float distanceToCursor;
 void main()
 {
     // // Disc
@@ -19,7 +20,7 @@ void main()
     strength = 1.0 - strength;
     strength = pow(strength, 10.0);
 
-//    strength *= step(uInnerLimit, distanceToCenter);
+    strength *= step(uInnerLimit, 2.0*distanceToCursor);
 
     // Final color
 //    vec3 color = mix(vec3(0.0), vColor, strength);

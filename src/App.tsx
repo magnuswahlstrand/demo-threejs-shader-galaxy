@@ -4,8 +4,8 @@ import {OrbitControls, shaderMaterial, Sphere} from "@react-three/drei";
 import fragment from "./shaders/fragment.glsl?raw";
 import vertex from "./shaders/vertex.glsl?raw";
 import * as THREE from "three";
-import {AdditiveBlending, Vector2} from "three";
-import {useMemo, useRef} from "react";
+import {AdditiveBlending, Mesh, PerspectiveCamera, SphereGeometry, Vector2, Vector3} from "three";
+import {MutableRefObject, useMemo, useRef} from "react";
 import {useControls} from "leva";
 
 const ColorMaterial = shaderMaterial(
@@ -74,7 +74,10 @@ interface Param {
 function Galaxy() {
     const {gl, viewport, size} = useThree()
 
+    const vec = new THREE.Vector3(); // create once and reuse
+    const vec2 = new THREE.Vector2(); // create once and reuse
     const ref = useRef<THREE.Mesh>();
+    const holeRef = useRef<THREE.Mesh>();
     const parameters = useShaderControls();
     const [colors, sizes, scales, randomness] = useMemo(() => {
         const positions = new Float32Array(parameters.count * 3)
@@ -122,34 +125,59 @@ function Galaxy() {
     console.log(viewport)
 
 
-    useFrame(({mouse}, delta) => {
+    useFrame(({mouse, camera}, delta) => {
         if (!ref.current) return
 
         // ts-ignore
         ref.current.material.uniforms.uTime.value += parameters.speed * delta
-        ref.current.material.uniforms.uCursor.value = new Vector2(mouse.x, mouse.y)
+
+
+        if (!holeRef.current) return
+        updatePlanXZPosition(vec, mouse, camera);
+        holeRef.current.position.lerp(vec, 0.1)
+        vec2.set(holeRef.current.position.x, holeRef.current.position.z)
+        // vec2.set(0.5,0.5)
+        ref.current.material.uniforms.uCursor.value = vec2
     })
 
 
-    return (<points ref={ref} visible>
-        <bufferGeometry attach="geometry">
-            <bufferAttribute attach={"attributes-position"} count={sizes.length / 3} array={sizes} itemSize={3}/>
-            <bufferAttribute attach={"attributes-color"} count={colors.length / 3} array={colors} itemSize={3}/>
-            <bufferAttribute attach={"attributes-aScale"} count={scales.length} array={scales} itemSize={1}/>
-            <bufferAttribute attach={"attributes-aRandomness"} count={randomness.length / 3} array={randomness}
-                             itemSize={3}/>
-        </bufferGeometry>
-        <colorMaterial
-            depthWrite={false}
-            vertexColors={true}
-            blending={AdditiveBlending}
-            uTime={0.8}
-            uInnerLimit={parameters.uInnerLimit}
-            uSize={parameters.uSize}
-            key={ColorMaterial.key}
-        />
-    </points>)
+    return <>
+        <points ref={ref} visible>
+            <bufferGeometry attach="geometry">
+                <bufferAttribute attach={"attributes-position"} count={sizes.length / 3} array={sizes} itemSize={3}/>
+                <bufferAttribute attach={"attributes-color"} count={colors.length / 3} array={colors} itemSize={3}/>
+                <bufferAttribute attach={"attributes-aScale"} count={scales.length} array={scales} itemSize={1}/>
+                <bufferAttribute attach={"attributes-aRandomness"} count={randomness.length / 3} array={randomness}
+                                 itemSize={3}/>
+            </bufferGeometry>
+            <colorMaterial
+                depthWrite={false}
+                vertexColors={true}
+                blending={AdditiveBlending}
+                uTime={0.8}
+                uInnerLimit={parameters.uInnerLimit}
+                uSize={parameters.uSize}
+                key={ColorMaterial.key}
+            />
+        </points>
+        <BlackHoleCursor innerRef={holeRef}/>
+    </>
 }
+
+function BlackHoleCursor({innerRef}: { innerRef: MutableRefObject<Mesh | undefined> }) {
+
+    // useFrame(({mouse, camera}) => {
+    //     if (!ref.current) return
+    //     updatePlanXZPosition(vec, mouse, camera);
+    //     ref.current.position.set(vec.x, 0, vec.z)
+    // })
+    //
+
+    return <Sphere ref={innerRef} args={[0.15, 20, 20]} position={innerRef?.current?.position}>
+        <meshBasicMaterial attach="material" color="black"/>
+    </Sphere>;
+}
+
 
 function BlackHole() {
     return <Sphere args={[0.25, 20, 20]}>
@@ -157,35 +185,18 @@ function BlackHole() {
     </Sphere>;
 }
 
+// https://stackoverflow.com/questions/13055214/mouse-canvas-x-y-to-three-js-world-x-y-z
+function updatePlanXZPosition(vec: Vector3, mouse: Vector2, camera: PerspectiveCamera) {
+    vec.set(
+        mouse.x,
+        mouse.y,
+        0.0);
 
-function BlackHoleCursor() {
-    // https://stackoverflow.com/questions/13055214/mouse-canvas-x-y-to-three-js-world-x-y-z
-    const vec = new THREE.Vector3(); // create once and reuse
-
-    const ref = useRef<THREE.Mesh>();
-
-
-    useFrame(({mouse, camera}) => {
-        if (!ref.current) return
-
-        vec.set(
-            mouse.x,
-            mouse.y,
-            0.0);
-
-        vec.unproject(camera);
-        vec.sub(camera.position).normalize();
-        const distance = -camera.position.y / vec.y;
-        vec.multiplyScalar(distance).add(camera.position);
-        ref.current.position.set(vec.x, 0, vec.z)
-    })
-
-
-    console.log(new THREE.Vector3(1, 1, 1).projectOnPlane(new THREE.Vector3(0, 1, 0)))
-
-    return <Sphere ref={ref} args={[0.1, 10, 10]} position={[-0.2, 0, 0.2]}>
-        <meshBasicMaterial attach="material" color="black"/>
-    </Sphere>;
+    vec.unproject(camera);
+    vec.sub(camera.position).normalize();
+    const distance = -camera.position.y / vec.y;
+    vec.multiplyScalar(distance).add(camera.position);
+    vec.setY(0);
 }
 
 function App() {
@@ -194,10 +205,10 @@ function App() {
             <Canvas camera={{position: [0, 3, 0], fov: 75, near: 0.1, far: 100}}>
                 <OrbitControls/>
 
-                <BlackHole/>
-                <BlackHoleCursor/>
+                {/*<BlackHole/>*/}
+                {/*<BlackHoleCursor/>*/}
                 <Galaxy/>
-                <axesHelper args={[0.5]}/>
+                <axesHelper args={[1]}/>
 
             </Canvas>
             <ul className="credits">
